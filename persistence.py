@@ -5,6 +5,7 @@ import pwd
 import grp
 import re
 import requests
+import psutil
 from zipfile import ZipFile
 from crontab import CronTab
 
@@ -24,6 +25,24 @@ def get_bash_info():
         if os.path.exists(user.dir + '/.bashrc'):
             zip_file.write(user.dir + '/.bashrc', arcname=user.username + '_bashrc')
     zip_file.close()
+
+
+def get_chrome_extensions(user):
+    extension_names = []
+    ext_dir = '/home/{}/.config/google-chrome/Default/Extensions'.format(user.username)
+    if os.path.exists(ext_dir):
+        extensions = os.listdir(ext_dir)
+        for ext in extensions:
+            if ext == 'Temp':
+                continue
+            a = requests.get('https://chrome.google.com/webstore/detail/{}'.format(ext), timeout=2)
+            if a.status_code == 200:
+                e = re.search(r'<title[^>]*>([^<]+)</title>', a.content.decode())
+                name = e.group()[7:-8]
+                extension_names.append(name)
+            else:
+                extension_names.append('Extension ID: {}'.format(ext))
+    return extension_names
 
 
 class Entry:
@@ -74,7 +93,8 @@ class Root:
 class User:
     def __init__(self, p):
         self.username = p[0]
-        self.group = grp.getgrgid(p[3])[0]
+        groups = [g.gr_name for g in grp.getgrall() if self.username in g.gr_mem]
+        self.groups = groups
         self.shell = p.pw_shell
         self.dir = p.pw_dir
         self.cron_entries = self.get_cron()
@@ -93,7 +113,7 @@ if __name__ == "__main__":
     set_uid_entries = []
     set_gid_entries = []
     ignore_directory = ['/proc', '/sys/bus', '/sys/dev', '/sys/devices', '/sys/block', '/sys/class', '/sys/module']
-    root = Root('/home/will/PycharmProjects', hidden_entries, set_uid_entries, set_gid_entries, ignore_directory)
+    root = Root('/home/will', hidden_entries, set_uid_entries, set_gid_entries, ignore_directory)
 
     std = sorted(hidden_entries, key=lambda file: (os.path.dirname(file.path), os.path.basename(file.path)))
     report.write('===========Hidden Executables===========\n')
@@ -106,7 +126,7 @@ if __name__ == "__main__":
     std = sorted(set_uid_entries, key=lambda file: (os.path.dirname(file.path), os.path.basename(file.path)))
     report.write('===========SetUID Files===========\n')
     for i in range(0, len(std)):
-        if i > 0 and os.path.dirname(std[i]) != os.path.dirname(std[i - 1]):
+        if i > 0 and os.path.dirname(std[i].path) != os.path.dirname(std[i - 1].path):
             report.write('\n')
         report.write(std[i].path + ' run as user ' + std[i].owner + '\n')
     report.write('\n')
@@ -120,23 +140,31 @@ if __name__ == "__main__":
     report.write('\n')
 
     get_bash_info()
-    extensions = get_chrome_extensions()
-    for ext in extensions:
-        a = requests.get('https://chrome.google.com/webstore/detail/aapocclcgogkmnckokdopfmhonfmgoek')
-        e = re.search(r'<title[^>]*>([^<]+)</title>', a.content.decode())
-        name = e.group()
-    # mycron = CronTab(user='root')
-    # job1 = mycron.new(command='touch hello.world')
-    # job1.minute.every(10)
-    # mycron.write()
+
     report.write('===========Users===========\n')
     for p in pwd.getpwall():
         u = User(p)
+        extensions = get_chrome_extensions(u)
         report.write(u.username+'\n')
         if u.cron_entries:
-            report.write('-----Scheduled Tasks-----\n')
+            report.write('\t-----Scheduled Tasks-----\n')
             for task in u.cron_entries:
-                report.write(str(task)+'\n')
+                report.write('\t' + str(task)+'\n')
             report.write("\n")
+        if extensions:
+            report.write('\t-----Chrome Extensions-----\n')
+            for ext in extensions:
+                report.write('\t' + ext + '\n')
+            report.write('\t----------------------------\n')
+        if u.groups:
+            report.write('\t-----Group Membership-----\n')
+            for group in u.groups:
+                report.write('\t' + group + '\n')
+            report.write('\t----------------------------\n')
+    current_users = psutil.users()
+    report.write('\n')
+    report.write('==========Active Users==========\n')
+    report.write('user, terminal, pid, start_time\n')
+    for user in current_users:
+        report.write('{}, {}, {}, {}\n'.format(user.name, user.terminal, user.pid, time.ctime(user.started)))
     report.close()
-
