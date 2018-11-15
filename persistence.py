@@ -5,6 +5,7 @@ import pwd
 import grp
 import re
 import requests
+from requests.exceptions import ConnectionError
 import psutil
 from zipfile import ZipFile
 from crontab import CronTab
@@ -32,16 +33,20 @@ def get_chrome_extensions(user):
     ext_dir = '/home/{}/.config/google-chrome/Default/Extensions'.format(user.username)
     if os.path.exists(ext_dir):
         extensions = os.listdir(ext_dir)
-        for ext in extensions:
-            if ext == 'Temp':
-                continue
-            a = requests.get('https://chrome.google.com/webstore/detail/{}'.format(ext), timeout=2)
-            if a.status_code == 200:
-                e = re.search(r'<title[^>]*>([^<]+)</title>', a.content.decode())
-                name = e.group()[7:-8]
-                extension_names.append(name)
-            else:
-                extension_names.append('Extension ID: {}'.format(ext))
+        try:
+            for ext in extensions:
+                if ext == 'Temp':
+                    continue
+                a = requests.get('https://chrome.google.com/webstore/detail/{}'.format(ext), timeout=2)
+                if a.status_code == 200:
+                    e = re.search(r'<title[^>]*>([^<]+)</title>', a.content.decode())
+                    name = e.group()[7:-8]
+                    extension_names.append(name)
+                else:
+                    extension_names.append('Extension ID: {}'.format(ext))
+        except ConnectionError as e:
+            print("Error: {}".format(e))
+            extension_names = extensions
     return extension_names
 
 
@@ -56,7 +61,7 @@ class Entry:
             path_stat = os.lstat(path)
         except Exception as e:
             print('error: {}'.format(e))
-            pass
+            return
         self.setuid = path_stat.st_mode & stat.S_ISUID
         self.setgid = path_stat.st_mode & stat.S_ISGID
         self.access_time = time.ctime(path_stat.st_atime)
@@ -113,7 +118,7 @@ if __name__ == "__main__":
     set_uid_entries = []
     set_gid_entries = []
     ignore_directory = ['/proc', '/sys/bus', '/sys/dev', '/sys/devices', '/sys/block', '/sys/class', '/sys/module']
-    root = Root('/home/will', hidden_entries, set_uid_entries, set_gid_entries, ignore_directory)
+    root = Root('/', hidden_entries, set_uid_entries, set_gid_entries, ignore_directory)
 
     std = sorted(hidden_entries, key=lambda file: (os.path.dirname(file.path), os.path.basename(file.path)))
     report.write('===========Hidden Executables===========\n')
@@ -134,7 +139,7 @@ if __name__ == "__main__":
     std = sorted(set_gid_entries, key=lambda file: (os.path.dirname(file.path), os.path.basename(file.path)))
     report.write('===========SetGID Directories===========\n')
     for i in range(0, len(std)):
-        if i > 0 and os.path.dirname(std[i]) != os.path.dirname(std[i - 1]):
+        if i > 0 and os.path.dirname(std[i].path) != os.path.dirname(std[i - 1].path):
             report.write('\n')
         report.write(std[i].path + ' run as group ' + std[i].group + '\n')
     report.write('\n')
@@ -144,16 +149,16 @@ if __name__ == "__main__":
     report.write('===========Users===========\n')
     for p in pwd.getpwall():
         u = User(p)
-        extensions = get_chrome_extensions(u)
+        chrome_extensions = get_chrome_extensions(u)
         report.write(u.username+'\n')
         if u.cron_entries:
             report.write('\t-----Scheduled Tasks-----\n')
             for task in u.cron_entries:
                 report.write('\t' + str(task)+'\n')
-            report.write("\n")
-        if extensions:
+            report.write('\t----------------------------\n')
+        if chrome_extensions:
             report.write('\t-----Chrome Extensions-----\n')
-            for ext in extensions:
+            for ext in chrome_extensions:
                 report.write('\t' + ext + '\n')
             report.write('\t----------------------------\n')
         if u.groups:
