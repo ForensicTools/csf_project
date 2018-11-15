@@ -11,10 +11,6 @@ from zipfile import ZipFile
 from crontab import CronTab
 
 
-def listdir_fullpath(d):
-    return [os.path.join(d, f) for f in os.listdir(d)]
-
-
 def get_bash_info():
     zip_file = ZipFile('user_bash.zip', 'w')
     if os.path.exists('/etc/bash.bashrc'):
