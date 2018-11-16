@@ -5,6 +5,7 @@
 `pip3 install -r requirements.txt`
 
 Requires sudo to access all files
+
 `sudo python3 persistence.py`
 
 ## Output
