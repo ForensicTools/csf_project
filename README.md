@@ -1,5 +1,7 @@
 # Linux Persistence Detection
 
+This script is aimed at aiding an investigator at finding possible signs of malicious persistent access on a system.  The methods and output are defined below.
+
 ## Authors
 
 Will McDonnell - wjm5004@rit.edu
