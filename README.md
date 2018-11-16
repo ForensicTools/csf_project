@@ -1,10 +1,16 @@
 # Linux Persistence Detection
 
+## Authors
+
+Will McDonnell - wjm5004@rit.edu
+
+Michael Milkovich - mjm1276@rit.edu
+
 ## Install and Run
 
 `pip3 install -r requirements.txt`
 
-Requires sudo to access all files
+Requires sudo to access all files for persistence detection
 
 `sudo python3 persistence.py`
 
